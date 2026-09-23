@@ -42,6 +42,9 @@ ffbuild_dockerbuild() {
     make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
 	pip3 install --break-system-packages bin2c
+	curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 22 && update-alternatives --install /usr/bin/clang clang "$(command -v clang-22)" 100 && update-alternatives --install /usr/bin/clang++ clang++ "$(command -v clang++-22)" 100
+    curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb && apt-get update && apt-get install -y --no-install-recommends cuda-nvcc-13-0 cuda-cudart-dev-13-0
+	export PATH="/usr/local/cuda-13.0/bin:$PATH"
 
     mkdir build && cd build
 
