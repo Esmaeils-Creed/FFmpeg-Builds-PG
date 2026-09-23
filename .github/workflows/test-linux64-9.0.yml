@@ -158,7 +158,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [linux64]
-        variant: [gpl 9.0,lgpl 9.0,gpl-shared 9.0,lgpl-shared 9.0]
+        variant: [lgpl 9.0,gpl-shared 9.0]
     steps:
       - name: Free Disk-Space
         run: df -h && sudo apt-get clean && docker system prune -a -f && sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android && df -h
@@ -224,7 +224,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [linux64]
-        variant: [gpl 9.0,lgpl 9.0,gpl-shared 9.0,lgpl-shared 9.0]
+        variant: [lgpl 9.0,gpl-shared 9.0]
     steps:
       - name: Free Disk-Space
         run: df -h && sudo apt-get clean && docker system prune -a -f && sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android && df -h
