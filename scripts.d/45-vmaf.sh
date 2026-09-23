@@ -3,8 +3,26 @@
 SCRIPT_REPO="https://github.com/Netflix/vmaf.git"
 SCRIPT_COMMIT="86da14d0306a138fd3f01319860b905169746516"
 
+SCRIPT_REPO2="https://github.com/FFmpeg/nv-codec-headers.git"
+SCRIPT_COMMIT2="eddcea9e27f6b772057c9b3f87de2cc1737faffc"
+
+SCRIPT_REPO3="https://github.com/FFmpeg/nv-codec-headers.git"
+SCRIPT_COMMIT3="ced4f8eba3ba5dd431932cba17928f0dffdaeb2b"
+SCRIPT_BRANCH3="sdk/13.0"
+
+SCRIPT_REPO4="https://github.com/FFmpeg/nv-codec-headers.git"
+SCRIPT_COMMIT4="833faee5f7b8d3f56444347c587f4aed11ee213f"
+SCRIPT_BRANCH4="sdk/11.1"
+
 ffbuild_enabled() {
     return 0
+}
+
+ffbuild_dockerdl() {
+    default_dl .
+    echo "git-mini-clone \"$SCRIPT_REPO2\" \"$SCRIPT_COMMIT2\" ffnvcodec"
+    echo "git-mini-clone \"$SCRIPT_REPO3\" \"$SCRIPT_COMMIT3\" ffnvcodec2"
+    echo "git-mini-clone \"$SCRIPT_REPO4\" \"$SCRIPT_COMMIT4\" ffnvcodec3"
 }
 
 ffbuild_dockerbuild() {
@@ -14,6 +32,14 @@ ffbuild_dockerbuild() {
     sed -i -E 's/([^.>:_[:alnum:]])swap\(/\1libsvm_swap(/g' libvmaf/src/svm.cpp
     sed -i -E 's/([^.>:_[:alnum:]])min\(/\1libsvm_min(/g' libvmaf/src/svm.cpp
     sed -i -E 's/([^.>:_[:alnum:]])max\(/\1libsvm_max(/g' libvmaf/src/svm.cpp
+
+	local nvdir=ffnvcodec
+    if (( FFVER < 800 )); then
+        nvdir=ffnvcodec3
+    elif (( FFVER <= 801 )); then
+        nvdir=ffnvcodec2
+    fi
+    make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
     mkdir build && cd build
 
