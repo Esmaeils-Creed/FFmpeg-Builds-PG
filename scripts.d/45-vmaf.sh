@@ -42,7 +42,7 @@ ffbuild_dockerbuild() {
     make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
 	pip3 install --break-system-packages bin2c
-	clang --version | head -2; ls -d /usr/local/cuda* ; command -v ptxas nvcc; ls /usr/local/cuda-13.0/nvvm/libdevice; ls -l /usr/bin/clang
+	rm -f /usr/bin/clang && printf '#!/bin/sh\nexec /usr/lib/llvm-22/bin/clang --cuda-path=/usr/local/cuda-13.0 "$@"\n' > /usr/bin/clang && chmod +x /usr/bin/clang && clang --version | head -2
 	export PATH="/usr/local/cuda-13.0/bin:$PATH"
 
     mkdir build && cd build
@@ -80,6 +80,7 @@ ffbuild_dockerbuild() {
         return -1
     fi
 
+	clang --version | head -2; ls -d /usr/local/cuda* ; command -v ptxas nvcc; ls /usr/local/cuda-13.0/nvvm/libdevice; ls -l /usr/bin/clang
     meson "${myconf[@]}" ../libvmaf || cat meson-logs/meson-log.txt
     ninja -j"$(nproc)"
     DESTDIR="$FFBUILD_DESTDIR" ninja install
