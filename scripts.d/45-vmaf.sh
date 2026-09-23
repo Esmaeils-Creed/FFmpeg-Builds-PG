@@ -25,6 +25,8 @@ ffbuild_dockerbuild() {
         -Denable_tests=false
         -Denable_docs=false
         -Denable_float=true
+		-Denable_cuda=true
+		-Denable_nvcc=false
     )
 
     if [[ $TARGET == *32 ]]; then
