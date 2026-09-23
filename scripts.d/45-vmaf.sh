@@ -41,6 +41,8 @@ ffbuild_dockerbuild() {
     fi
     make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
+	pip3 install --break-system-packages bin2c
+
     mkdir build && cd build
 
     local myconf=(
