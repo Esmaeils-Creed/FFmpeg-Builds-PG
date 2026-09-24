@@ -50,7 +50,7 @@ ffbuild_dockerbuild() {
     rm -f cuda-keyring_1.1-1_all.deb
 
     apt-get update
-    apt-get install -y --no-install-recommends cuda-toolkit-13-0
+    apt-get install -y --no-install-recommends cuda-toolkit-13-0 lsb-release
 
     # clang wrapper used by libvmaf's Meson CUDA path
     rm -f /usr/bin/clang /usr/bin/clang++
