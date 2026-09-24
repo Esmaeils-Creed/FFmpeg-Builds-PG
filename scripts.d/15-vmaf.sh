@@ -41,11 +41,37 @@ ffbuild_dockerbuild() {
     fi
     make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
-	pip3 install --break-system-packages bin2c
-	curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 22 && ln -sf "$(command -v clang-22)" /usr/bin/clang && ln -sf "$(command -v clang++-22)" /usr/bin/clang++ && clang --version | head -2    curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb && apt-get update && apt-get install -y --no-install-recommends cuda-toolkit-13-0
-	rm -f /usr/bin/clang && printf '#!/bin/sh\nexec /usr/lib/llvm-22/bin/clang --cuda-path=/usr/local/cuda-13.0 "$@"\n' > /usr/bin/clang && chmod +x /usr/bin/clang && clang --version | head -2
-	export PATH="/usr/local/cuda-13.0/bin:$PATH"
+	    # LLVM 22
+    curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 22
 
+    # CUDA 13.0
+    curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+    dpkg -i cuda-keyring_1.1-1_all.deb
+    rm -f cuda-keyring_1.1-1_all.deb
+
+    apt-get update
+    apt-get install -y --no-install-recommends cuda-toolkit-13-0
+
+    # clang wrapper used by libvmaf's Meson CUDA path
+    rm -f /usr/bin/clang /usr/bin/clang++
+
+    printf '#!/bin/sh\nexec /usr/lib/llvm-22/bin/clang --cuda-path=/usr/local/cuda-13.0 "$@"\n' \
+        > /usr/bin/clang
+    chmod +x /usr/bin/clang
+
+    printf '#!/bin/sh\nexec /usr/lib/llvm-22/bin/clang++ --cuda-path=/usr/local/cuda-13.0 "$@"\n' \
+        > /usr/bin/clang++
+    chmod +x /usr/bin/clang++
+
+    export PATH="/usr/local/cuda-13.0/bin:$PATH"
+
+    clang --version | head -2
+    clang++ --version | head -2
+    ls -ld /usr/local/cuda*
+    command -v ptxas
+    command -v nvcc
+    ls /usr/local/cuda-13.0/nvvm/libdevice
+    ls -l /usr/bin/clang /usr/bin/clang++
     mkdir build && cd build
 
     local myconf=(
