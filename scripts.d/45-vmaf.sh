@@ -76,6 +76,7 @@ ffbuild_dockerbuild() {
     ls /usr/local/cuda-13.0/nvvm/libdevice
     ls -l /usr/bin/clang /usr/bin/clang++
 	grep -rlZ '#include "feature_collector.h"' libvmaf/src/feature/cuda/ | xargs -0 perl -0777 -pi -e 's/#include "feature_collector\.h"/#ifndef DEVICE_CODE\n#include "feature_collector.h"\n#endif/g'
+	sed -i "s|'-I', '../src',|'-I', '../libvmaf/src',|; s|'-I', '../include',|'-I', '../libvmaf/include',|; s|'-I', '../src/feature',|'-I', '../libvmaf/src/feature',|; s|'-I', '../src/' + cuda_dir,|'-I', '../libvmaf/src/' + cuda_dir,|" libvmaf/src/meson.build
     mkdir build && cd build
 
     local myconf=(
