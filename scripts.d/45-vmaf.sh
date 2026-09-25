@@ -51,17 +51,17 @@ ffbuild_dockerbuild() {
     apt-get install -y --no-install-recommends cuda-toolkit-13-0
 	apt-get install -y lsb-release wget software-properties-common gnupg
 
-    # LLVM 22
-    curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 22
+    # LLVM 23
+    curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 23
     # clang wrapper used by libvmaf's Meson CUDA path
     rm -f /usr/bin/clang /usr/bin/clang++
 
-	LLVM_CLANG="$(command -v clang-22)"
+	LLVM_CLANG="$(command -v clang-23)"
 	
 	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANG" > /usr/bin/clang
 	chmod +x /usr/bin/clang
 
-	LLVM_CLANGXX="$(command -v clang++-22)"
+	LLVM_CLANGXX="$(command -v clang++-23)"
 
 	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANGXX" > /usr/bin/clang++
 	chmod +x /usr/bin/clang++
