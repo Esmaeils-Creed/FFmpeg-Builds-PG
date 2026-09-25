@@ -1,69 +1,8 @@
 name: Vmaf Quick Test (GLM)
 #Created with sonnet 5 medium help
 
-on:
-  push:
-    paths: ['scripts.d/45-vmaf.sh']
-  workflow_dispatch:
+name: Quick vmaf test
 
-concurrency:
-  group: quicktest-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-  packages: write
-
-env:
-  TARGET: linux64
-  VARIANT: gpl
-  ADDIN: "9.0"
-
-jobs:
-  test:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute download-cache key
-        id: dl
-        run: |
-          if [ -x util/get_dl_cache_tag.sh ]; then
-            echo "tag=$(./util/get_dl_cache_tag.sh)" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=scripts-${{ hashFiles('scripts.d/**') }}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Restore download cache
-        uses: actions/cache@v4
-        with:
-          path: dlcache
-          key: dl-${{ steps.dl.outputs.tag }}
-
-      - name: Warm download cache
-        run: ./download.sh   # remove if your fork lacks this script
-
-      - name: Build builder images (unchanged script layers come from GHCR)
-        run: ./makeimage.sh "$TARGET" "$VARIANT" "$ADDIN"
-
-      - name: Build ffmpeg
-        run: ./build.sh "$TARGET" "$VARIANT" "$ADDIN"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ffmpeg-${{ env.TARGET }}-${{ env.VARIANT }}-${{ env.ADDIN }}-test
-          path: artifacts/*
-          if-no-files-found: error
 on:
   workflow_dispatch: {}
 
