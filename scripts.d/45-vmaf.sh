@@ -56,13 +56,15 @@ ffbuild_dockerbuild() {
     # clang wrapper used by libvmaf's Meson CUDA path
     rm -f /usr/bin/clang /usr/bin/clang++
 
-    printf '#!/bin/sh\nexec /usr/lib/llvm-22/bin/clang --cuda-path=/usr/local/cuda-13.0 "$@"\n' \
-        > /usr/bin/clang
-    chmod +x /usr/bin/clang
+	LLVM_CLANG="$(command -v clang-22)"
+	
+	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANG" > /usr/bin/clang
+	chmod +x /usr/bin/clang
 
-    printf '#!/bin/sh\nexec /usr/lib/llvm-22/bin/clang++ --cuda-path=/usr/local/cuda-13.0 "$@"\n' \
-        > /usr/bin/clang++
-    chmod +x /usr/bin/clang++
+	LLVM_CLANGXX="$(command -v clang++-22)"
+
+	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANGXX" > /usr/bin/clang++
+	chmod +x /usr/bin/clang++
 
     export PATH="/usr/local/cuda-13.0/bin:$PATH"
 
