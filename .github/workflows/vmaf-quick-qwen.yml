@@ -1,0 +1,83 @@
+name: Vmaf Quick Test (Qwen)
+#Created with Qwen 3.8 max help
+
+on:
+  push:
+    paths:
+      - 'scripts.d/45-vmaf.sh' # Only triggers when you edit the VMAF script
+  workflow_dispatch: {}
+
+concurrency:
+  group: vmaf-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKER_BUILDKIT: 1
+  TARGET: linux64
+  VARIANT: gpl
+  ADDIN: "9.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Free up disk space (FFmpeg builds require a lot of space)
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # Use BtbN's buildkit config for optimal parallel compilation
+          buildkitd-config: .github/buildkit.toml
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 1. Cache the Source Downloads
+      # This prevents re-downloading the source code for x264, x265, vmaf, etc.
+      - name: Get download cache key
+        id: dl_cache
+        run: |
+          # This runs a quick hash of all download URLs/commits to create a cache key
+          echo "dltagname=$(./util/get_dl_cache_tag.sh)" >> $GITHUB_OUTPUT
+
+      - name: Cache Downloads
+        uses: actions/cache@v4
+        with:
+          path: .cache/downloads
+          key: download-cache-${{ steps.dl_cache.outputs.dltagname }}
+          restore-keys: |
+            download-cache-
+
+      # 2. Cache BuildKit Layers (The Magic Step)
+      # makeimage.sh stores BuildKit cache in .cache/ghcr.io_btbn_ffmpeg-builds_linux64-gpl-9.0
+      # We use a STATIC key. BuildKit automatically handles layer invalidation.
+      # If you change 45-vmaf.sh, BuildKit invalidates the VMAF layer and rebuilds it,
+      # while keeping layers 10-40 (x264, aom, etc.) perfectly cached.
+      - name: Cache BuildKit Layers
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: buildkit-cache-linux64-gpl-90-v1
+
+      # 3. Build Everything
+      - name: Build image + ffmpeg
+        run: |
+          # QUICKBUILD=1 skips building the base OS images (saves ~15-20 mins)
+          # and pulls them from BtbN's public GHCR instead.
+          QUICKBUILD=1 ./makeimage.sh $TARGET $VARIANT $ADDIN
+          ./build.sh $TARGET $VARIANT $ADDIN
+
+      - name: Upload FFmpeg Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-vmaf-test
+          path: artifacts/*
