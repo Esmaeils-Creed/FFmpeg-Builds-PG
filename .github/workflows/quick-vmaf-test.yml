@@ -1,0 +1,31 @@
+name: Quick vmaf test
+#Note: This is vibe-coded. Use with caution. Manually verify later.
+on:
+  push:
+      paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore build cache
+        uses: actions/cache@v6
+        with:
+          path: .cache
+          key: quicktest-linux64-gpl9.0-${{ hashFiles('scripts.d/**', 'images/**', 'variants/**', 'addins/**') }}
+          restore-keys: quicktest-linux64-gpl9.0-
+
+      - name: Build image + ffmpeg
+        run: |
+          ./makeimage.sh linux64 gpl 9.0
+          ./build.sh linux64 gpl 9.0
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-linux64-gpl9.0-test
+          path: artifacts/*
