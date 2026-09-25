@@ -1,8 +1,6 @@
 name: Vmaf Quick Test (GLM)
 #Created with sonnet 5 medium help
 
-name: Quick vmaf test
-
 on:
   workflow_dispatch: {}
 
