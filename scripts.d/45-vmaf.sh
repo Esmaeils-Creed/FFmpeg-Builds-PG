@@ -77,7 +77,7 @@ ffbuild_dockerbuild() {
     ls -l /usr/bin/clang /usr/bin/clang++
 	grep -rlZ '#include "feature_collector.h"' libvmaf/src/feature/cuda/ | xargs -0 perl -0777 -pi -e 's/#include "feature_collector\.h"/#ifndef DEVICE_CODE\n#include "feature_collector.h"\n#endif/g'
 	sed -i "s|'-I', '../src',|'-I', '../libvmaf/src',|; s|'-I', '../include',|'-I', '../libvmaf/include',|; s|'-I', '../src/feature',|'-I', '../libvmaf/src/feature',|; s|'-I', '../src/' + cuda_dir,|'-I', '../libvmaf/src/' + cuda_dir, '-I', '$FFBUILD_PREFIX/include',|" libvmaf/src/meson.build
-	clang --cuda-gpu-arch=sm_75 --cuda-device-only -E -H ../libvmaf/src/feature/cuda/integer_adm/adm_dwt2.cu -I ./src -I ../libvmaf/src -I ../libvmaf/include -I ../libvmaf/src/feature -I ../libvmaf/src/cuda/ -I "$FFBUILD_PREFIX/include" -DDEVICE_CODE 2>&1 | grep -E '^\.+ |fatal error'; true
+	#clang --cuda-gpu-arch=sm_75 --cuda-device-only -E -H ../libvmaf/src/feature/cuda/integer_adm/adm_dwt2.cu -I ./src -I ../libvmaf/src -I ../libvmaf/include -I ../libvmaf/src/feature -I ../libvmaf/src/cuda/ -I "$FFBUILD_PREFIX/include" -DDEVICE_CODE 2>&1 | grep -E '^\.+ |fatal error'; true
 	mkdir build && cd build
 
     local myconf=(
