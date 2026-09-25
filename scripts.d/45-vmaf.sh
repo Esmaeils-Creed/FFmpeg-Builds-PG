@@ -118,7 +118,7 @@ ffbuild_dockerbuild() {
     ninja -j"$(nproc)"
     DESTDIR="$FFBUILD_DESTDIR" ninja install
 
-    sed -i 's/Libs.private:/Libs.private: -lstdc++/; t; $ a Libs.private: -lstdc++' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
+    sed -i 's/Libs.private:/Libs.private: -lstdc++ -ldl/; t; $ a Libs.private: -lstdc++ -ldl' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
 }
 
 ffbuild_configure() {
