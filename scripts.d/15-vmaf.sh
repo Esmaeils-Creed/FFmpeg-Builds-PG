@@ -49,7 +49,7 @@ ffbuild_dockerbuild() {
 
     apt-get update
     apt-get install -y --no-install-recommends cuda-toolkit-13-0
-	apt-get install -y lsb-release
+	apt-get install -y lsb-release wget software-properties-common gnupg
 
     # LLVM 22
     curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 22
