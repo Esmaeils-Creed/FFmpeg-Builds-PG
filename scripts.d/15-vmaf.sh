@@ -41,9 +41,7 @@ ffbuild_dockerbuild() {
     fi
     make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
-	    # LLVM 22
-    curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 22
-
+	
     # CUDA 13.0
     curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
     dpkg -i cuda-keyring_1.1-1_all.deb
@@ -53,6 +51,8 @@ ffbuild_dockerbuild() {
     apt-get install -y --no-install-recommends cuda-toolkit-13-0
 	apt-get install -y lsb-release
 
+    # LLVM 22
+    curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 22
     # clang wrapper used by libvmaf's Meson CUDA path
     rm -f /usr/bin/clang /usr/bin/clang++
 
