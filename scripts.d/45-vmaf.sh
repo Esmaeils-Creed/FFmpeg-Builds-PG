@@ -75,6 +75,7 @@ ffbuild_dockerbuild() {
     command -v nvcc
     ls /usr/local/cuda-13.0/nvvm/libdevice
     ls -l /usr/bin/clang /usr/bin/clang++
+	grep -rlZ '#include "feature_collector.h"' libvmaf/src/feature/cuda/ | xargs -0 perl -0777 -pi -e 's/#include "feature_collector\.h"/#ifndef DEVICE_CODE\n#include "feature_collector.h"\n#endif/g'
     mkdir build && cd build
 
     local myconf=(
