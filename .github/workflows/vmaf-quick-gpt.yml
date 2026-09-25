@@ -14,7 +14,7 @@ concurrency:
 env:
   TARGET: linux64
   VARIANT: gpl-shared
-  ADDIN: 9.0
+  ADDIN: "9.0"
 
 jobs:
   build:
