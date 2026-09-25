@@ -1,6 +1,10 @@
 name: Test Ubuntu 24.04 linux64 9.0
 
 on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
   workflow_dispatch:
     inputs:
       doRelease:
