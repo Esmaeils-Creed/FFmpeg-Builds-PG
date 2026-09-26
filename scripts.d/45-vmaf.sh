@@ -33,7 +33,7 @@ ffbuild_dockerbuild() {
     sed -i -E 's/([^.>:_[:alnum:]])min\(/\1libsvm_min(/g' libvmaf/src/svm.cpp
     sed -i -E 's/([^.>:_[:alnum:]])max\(/\1libsvm_max(/g' libvmaf/src/svm.cpp
 
-    local nvdir=ffnvcodec
+	local nvdir=ffnvcodec
     if (( FFVER < 800 )); then
         nvdir=ffnvcodec3
     elif (( FFVER <= 801 )); then
@@ -41,29 +41,30 @@ ffbuild_dockerbuild() {
     fi
     make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
+	
     # CUDA 13.0
     curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
     dpkg -i cuda-keyring_1.1-1_all.deb
     rm -f cuda-keyring_1.1-1_all.deb
 
     apt-get update
-    # Combined into one line for speed, added cleanup to prevent massive Docker layer bloat
-    apt-get install -y --no-install-recommends cuda-toolkit-13-0 lsb-release wget software-properties-common gnupg
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends cuda-toolkit-13-0
+	apt-get install -y lsb-release wget software-properties-common gnupg
 
     # LLVM 23
     curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 23
-    LLVM_CLANG="$(command -v clang-23)"
+	LLVM_CLANG="$(command -v clang-23)"
 
-    rm -f /usr/bin/clang /usr/bin/clang++
+	rm -f /usr/bin/clang /usr/bin/clang++
 
-    printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANG" > /usr/bin/clang
-    chmod +x /usr/bin/clang
+	
+	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANG" > /usr/bin/clang
+	chmod +x /usr/bin/clang
 
-    LLVM_CLANGXX="$(command -v clang++-23)"
+	LLVM_CLANGXX="$(command -v clang++-23)"
 
-    printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANGXX" > /usr/bin/clang++
-    chmod +x /usr/bin/clang++
+	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANGXX" > /usr/bin/clang++
+	chmod +x /usr/bin/clang++
 
     export PATH="/usr/local/cuda-13.0/bin:$PATH"
 
@@ -74,13 +75,11 @@ ffbuild_dockerbuild() {
     command -v nvcc
     ls /usr/local/cuda-13.0/nvvm/libdevice
     ls -l /usr/bin/clang /usr/bin/clang++
-    
-    grep -rlZ '#include "feature_collector.h"' libvmaf/src/feature/cuda/ | xargs -0 perl -0777 -pi -e 's/#include "feature_collector\.h"/#ifndef DEVICE_CODE\n#include "feature_collector.h"\n#endif/g'
-
-    # REMOVED THE PREMATURE SED COMMANDS FROM HERE
-
-    #clang --cuda-gpu-arch=sm_75 --cuda-device-only -E -H ../libvmaf/src/feature/cuda/integer_adm/adm_dwt2.cu -I ./src -I ../libvmaf/src -I ../libvmaf/include -I ../libvmaf/src/feature -I ../libvmaf/src/cuda/ -I "$FFBUILD_PREFIX/include" -DDEVICE_CODE 2>&1 | grep -E '^\.+ |fatal error'; true
-    mkdir build && cd build
+	grep -rlZ '#include "feature_collector.h"' libvmaf/src/feature/cuda/ | xargs -0 perl -0777 -pi -e 's/#include "feature_collector\.h"/#ifndef DEVICE_CODE\n#include "feature_collector.h"\n#endif/g'
+	sed -i 's/Libs.private:/Libs.private: -lstdc++ -ldl/; t; $ a Libs.private: -lstdc++ -ldl' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
+	sed -i '/^Libs:/ s/$/ -lstdc++ -ldl/' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
+	#clang --cuda-gpu-arch=sm_75 --cuda-device-only -E -H ../libvmaf/src/feature/cuda/integer_adm/adm_dwt2.cu -I ./src -I ../libvmaf/src -I ../libvmaf/include -I ../libvmaf/src/feature -I ../libvmaf/src/cuda/ -I "$FFBUILD_PREFIX/include" -DDEVICE_CODE 2>&1 | grep -E '^\.+ |fatal error'; true
+	mkdir build && cd build
 
     local myconf=(
         --prefix="$FFBUILD_PREFIX"
@@ -90,8 +89,8 @@ ffbuild_dockerbuild() {
         -Denable_tests=false
         -Denable_docs=false
         -Denable_float=true
-        -Denable_cuda=true
-        -Denable_nvcc=false
+		-Denable_cuda=true
+		-Denable_nvcc=false
     )
 
     if [[ $TARGET == *32 ]]; then
@@ -115,14 +114,12 @@ ffbuild_dockerbuild() {
         return -1
     fi
 
-    clang --version | head -2; ls -d /usr/local/cuda* ; command -v ptxas nvcc; ls /usr/local/cuda-13.0/nvvm/libdevice; ls -l /usr/bin/clang
+	clang --version | head -2; ls -d /usr/local/cuda* ; command -v ptxas nvcc; ls /usr/local/cuda-13.0/nvvm/libdevice; ls -l /usr/bin/clang
     meson "${myconf[@]}" ../libvmaf || cat meson-logs/meson-log.txt
     ninja -j"$(nproc)"
     DESTDIR="$FFBUILD_DESTDIR" ninja install
 
-    # MOVED THE SED COMMANDS HERE: Now the .pc file actually exists!
     sed -i 's/Libs.private:/Libs.private: -lstdc++ -ldl/; t; $ a Libs.private: -lstdc++ -ldl' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
-    sed -i '/^Libs:/ s/$/ -lstdc++ -ldl/' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
 }
 
 ffbuild_configure() {
