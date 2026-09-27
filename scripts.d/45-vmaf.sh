@@ -41,7 +41,6 @@ ffbuild_dockerbuild() {
     fi
     make -C "$nvdir" PREFIX="$FFBUILD_PREFIX" install
 
-	
     # CUDA 13.0
     curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
     dpkg -i cuda-keyring_1.1-1_all.deb
@@ -57,7 +56,6 @@ ffbuild_dockerbuild() {
 
 	rm -f /usr/bin/clang /usr/bin/clang++
 
-	
 	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANG" > /usr/bin/clang
 	chmod +x /usr/bin/clang
 
@@ -75,10 +73,10 @@ ffbuild_dockerbuild() {
     command -v nvcc
     ls /usr/local/cuda-13.0/nvvm/libdevice
     ls -l /usr/bin/clang /usr/bin/clang++
+
 	grep -rlZ '#include "feature_collector.h"' libvmaf/src/feature/cuda/ | xargs -0 perl -0777 -pi -e 's/#include "feature_collector\.h"/#ifndef DEVICE_CODE\n#include "feature_collector.h"\n#endif/g'
-	sed -i 's/Libs.private:/Libs.private: -lstdc++ -ldl/; t; $ a Libs.private: -lstdc++ -ldl' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
-	sed -i '/^Libs:/ s/$/ -lstdc++ -ldl/' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
-	#clang --cuda-gpu-arch=sm_75 --cuda-device-only -E -H ../libvmaf/src/feature/cuda/integer_adm/adm_dwt2.cu -I ./src -I ../libvmaf/src -I ../libvmaf/include -I ../libvmaf/src/feature -I ../libvmaf/src/cuda/ -I "$FFBUILD_PREFIX/include" -DDEVICE_CODE 2>&1 | grep -E '^\.+ |fatal error'; true
+	sed -i "s|'-I', '../src',|'-I', '../libvmaf/src',|; s|'-I', '../include',|'-I', '../libvmaf/include',|; s|'-I', '../src/feature',|'-I', '../libvmaf/src/feature',|; s|'-I', '../src/' + cuda_dir,|'-I', '../libvmaf/src/' + cuda_dir, '-I', '$FFBUILD_PREFIX/include',|" libvmaf/src/meson.build
+
 	mkdir build && cd build
 
     local myconf=(
@@ -114,12 +112,12 @@ ffbuild_dockerbuild() {
         return -1
     fi
 
-	clang --version | head -2; ls -d /usr/local/cuda* ; command -v ptxas nvcc; ls /usr/local/cuda-13.0/nvvm/libdevice; ls -l /usr/bin/clang
     meson "${myconf[@]}" ../libvmaf || cat meson-logs/meson-log.txt
     ninja -j"$(nproc)"
     DESTDIR="$FFBUILD_DESTDIR" ninja install
 
     sed -i 's/Libs.private:/Libs.private: -lstdc++ -ldl/; t; $ a Libs.private: -lstdc++ -ldl' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
+    sed -i '/^Libs:/ s/$/ -lstdc++ -ldl/' "$FFBUILD_DESTPREFIX"/lib/pkgconfig/libvmaf.pc
 }
 
 ffbuild_configure() {
