@@ -51,15 +51,20 @@ ffbuild_dockerbuild() {
 	apt-get install -y lsb-release wget software-properties-common gnupg
 
     # LLVM 23
-    curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 23
-	LLVM_CLANG="$(command -v clang-23)"
+    if curl -fsSL https://apt.llvm.org/llvm.sh | bash -s -- 23; then
+		LLVM_CLANG="$(readlink -f "$(command -v clang-23)")"
+		LLVM_CLANGXX="$(readlink -f "$(command -v clang++-23)")"
+	else
+		echo "apt.llvm.org unavailable, falling back to distro clang package" >&2
+		apt-get install -y --no-install-recommends clang
+		LLVM_CLANG="$(readlink -f "$(command -v clang)")"
+		LLVM_CLANGXX="$(readlink -f "$(command -v clang++)")"
+	fi
 
 	rm -f /usr/bin/clang /usr/bin/clang++
 
 	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANG" > /usr/bin/clang
 	chmod +x /usr/bin/clang
-
-	LLVM_CLANGXX="$(command -v clang++-23)"
 
 	printf '#!/bin/sh\nexec %s --cuda-path=/usr/local/cuda-13.0 "$@"\n' "$LLVM_CLANGXX" > /usr/bin/clang++
 	chmod +x /usr/bin/clang++
