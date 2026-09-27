@@ -1,5 +1,5 @@
 name: Vmaf Quick Test (Qwen)
-#Created with Qwen 3.8 max help
+#Created with Qwen 3.8 max help (critics from claude, fixes from qwen)
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: vmaf-test-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: true # Cancels overlapping runs to prevent cache conflicts
 
 env:
   DOCKER_BUILDKIT: 1
@@ -23,17 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Free up disk space (FFmpeg builds require a lot of space)
+      # Use BtbN's official cleanup script (includes docker system prune)
       - name: Free Disk Space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
+        run: ./util/free_disk_space.sh
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          # Use BtbN's buildkit config for optimal parallel compilation
-          buildkitd-config: .github/buildkit.toml
-
+      # Optional but recommended: Login to GHCR to avoid anonymous pull rate limits
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -41,43 +35,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. Cache the Source Downloads
-      # This prevents re-downloading the source code for x264, x265, vmaf, etc.
-      - name: Get download cache key
-        id: dl_cache
+      # THE FIX: Patch vars.sh to pull BtbN's base images
+      - name: Patch vars.sh for QUICKBUILD
         run: |
-          # This runs a quick hash of all download URLs/commits to create a cache key
-          echo "dltagname=$(./util/get_dl_cache_tag.sh)" >> $GITHUB_OUTPUT
+          # vars.sh uses: REPO="${GITHUB_REPOSITORY:-btbn/ffmpeg-builds}"
+          # Since GITHUB_REPOSITORY is always set to your fork in GHA,
+          # we must patch this file so QUICKBUILD=1 pulls from BtbN's public GHCR.
+          sed -i 's|REPO="${GITHUB_REPOSITORY:-btbn/ffmpeg-builds}"|REPO="btbn/ffmpeg-builds"|g' util/vars.sh
 
-      - name: Cache Downloads
-        uses: actions/cache@v4
-        with:
-          path: .cache/downloads
-          key: download-cache-${{ steps.dl_cache.outputs.dltagname }}
-          restore-keys: |
-            download-cache-
-
-      # 2. Cache BuildKit Layers (The Magic Step)
-      # makeimage.sh stores BuildKit cache in .cache/ghcr.io_btbn_ffmpeg-builds_linux64-gpl-9.0
-      # We use a STATIC key. BuildKit automatically handles layer invalidation.
-      # If you change 45-vmaf.sh, BuildKit invalidates the VMAF layer and rebuilds it,
-      # while keeping layers 10-40 (x264, aom, etc.) perfectly cached.
-      - name: Cache BuildKit Layers
-        uses: actions/cache@v4
+      # 1. RESTORE CACHE (Dynamic Key)
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
         with:
           path: .cache
-          key: buildkit-cache-linux64-gpl-90-v1
+          key: quicktest-${{ env.TARGET }}-${{ env.VARIANT }}-${{ env.ADDIN }}-${{ github.run_id }}
+          restore-keys: |
+            quicktest-${{ env.TARGET }}-${{ env.VARIANT }}-${{ env.ADDIN }}-
 
-      # 3. Build Everything
+      # 2. BUILD
       - name: Build image + ffmpeg
         run: |
-          # QUICKBUILD=1 skips building the base OS images (saves ~15-20 mins)
-          # and pulls them from BtbN's public GHCR instead.
+          # QUICKBUILD=1 skips building base images (saving ~15-20 mins) 
+          # and pulls them from BtbN's public GHCR registry instead.
           QUICKBUILD=1 ./makeimage.sh $TARGET $VARIANT $ADDIN
           ./build.sh $TARGET $VARIANT $ADDIN
 
-      - name: Upload FFmpeg Artifact
-        uses: actions/upload-artifact@v4
+      # 3. SAVE CACHE (Always run)
+      - name: Save build cache
+        if: always()
+        uses: actions/cache/save@v4
         with:
-          name: ffmpeg-vmaf-test
+          path: .cache
+          key: quicktest-${{ env.TARGET }}-${{ env.VARIANT }}-${{ env.ADDIN }}-${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ffmpeg-${{ env.TARGET }}-${{ env.VARIANT }}-${{ env.ADDIN }}-test
           path: artifacts/*
+          if-no-files-found: ignore
