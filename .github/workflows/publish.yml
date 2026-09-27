@@ -1,57 +1,79 @@
-name: Publish Past Artifact 
+name: Publish Past Artifact
 
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'The ID of the past workflow run (e.g., 1092837465)'
+        description: "Workflow run ID containing the artifact"
         required: true
         type: string
       tag_name:
-        description: 'Release tag name (e.g., vmaf-test-v1)'
+        description: "Release tag name"
         required: true
         type: string
 
 permissions:
-  contents: write   # Needed to create releases
-  actions: read     # Needed to download artifacts from OTHER runs
+  contents: write
+  actions: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Download artifact from specific run
+      - uses: actions/checkout@v7
+
+      - name: Get original run commit SHA
+        id: runinfo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          HEAD_SHA="$(gh api "repos/$GH_REPO/actions/runs/${{ inputs.run_id }}" --jq '.head_sha')"
+
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Download artifact from selected run
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ inputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
           path: downloaded_artifacts
-          pattern: ffmpeg-*       # Only grab your ffmpeg build outputs
-          merge-multiple: true    # Flattens them into the path directory
+          pattern: ffmpeg-*
+          merge-multiple: true
 
       - name: Publish to GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+
           cd downloaded_artifacts
-          
-          # Find all files downloaded from the artifact
+
           mapfile -t files < <(find . -type f)
-          
+
           if [ ${#files[@]} -eq 0 ]; then
-            echo "No files found in the artifact for run ${{ inputs.run_id }}."
+            echo "No files found inside the downloaded artifact."
             exit 1
           fi
 
-          echo "Found files to publish:"
+          echo "Files to publish:"
           printf '%s\n' "${files[@]}"
 
           TAG="${{ inputs.tag_name }}"
+          TARGET_SHA="${{ steps.runinfo.outputs.head_sha }}"
 
-          # Create the release and upload all found files
-          gh release create "$TAG" \
-            --title "Build from Run ${{ inputs.run_id }}" \
-            --notes "Published manually from workflow run [${{ inputs.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ inputs.run_id }})" \
-            --prerelease \
-            "${files[@]}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release '$TAG' already exists. Uploading assets with --clobber."
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" \
+              --target "$TARGET_SHA" \
+              --title "VMAF build from run ${{ inputs.run_id }}" \
+              --notes "Published from workflow run ${{ inputs.run_id }}" \
+              --prerelease \
+              "${files[@]}"
+          fi
