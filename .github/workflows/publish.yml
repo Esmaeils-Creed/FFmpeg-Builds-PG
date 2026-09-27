@@ -1,0 +1,57 @@
+name: Publish Past Artifact 
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'The ID of the past workflow run (e.g., 1092837465)'
+        required: true
+        type: string
+      tag_name:
+        description: 'Release tag name (e.g., vmaf-test-v1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # Needed to create releases
+  actions: read     # Needed to download artifacts from OTHER runs
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact from specific run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded_artifacts
+          pattern: ffmpeg-*       # Only grab your ffmpeg build outputs
+          merge-multiple: true    # Flattens them into the path directory
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd downloaded_artifacts
+          
+          # Find all files downloaded from the artifact
+          mapfile -t files < <(find . -type f)
+          
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No files found in the artifact for run ${{ inputs.run_id }}."
+            exit 1
+          fi
+
+          echo "Found files to publish:"
+          printf '%s\n' "${files[@]}"
+
+          TAG="${{ inputs.tag_name }}"
+
+          # Create the release and upload all found files
+          gh release create "$TAG" \
+            --title "Build from Run ${{ inputs.run_id }}" \
+            --notes "Published manually from workflow run [${{ inputs.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ inputs.run_id }})" \
+            --prerelease \
+            "${files[@]}"
