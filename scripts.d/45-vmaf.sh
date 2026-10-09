@@ -1,7 +1,8 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/Netflix/vmaf.git"
-SCRIPT_COMMIT="86da14d0306a138fd3f01319860b905169746516"
+#SCRIPT_COMMIT="86da14d0306a138fd3f01319860b905169746516"
+SCRIPT_COMMIT="e5fce8e191b250c7ef48c4284740973b73dda002"
 
 SCRIPT_REPO2="https://github.com/FFmpeg/nv-codec-headers.git"
 SCRIPT_COMMIT2="eddcea9e27f6b772057c9b3f87de2cc1737faffc"
