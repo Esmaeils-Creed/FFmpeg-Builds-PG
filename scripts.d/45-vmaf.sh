@@ -27,6 +27,17 @@ ffbuild_dockerbuild() {
     sed -i -E 's/([^.>:_[:alnum:]])min\(/\1libsvm_min(/g' libvmaf/src/svm.cpp
     sed -i -E 's/([^.>:_[:alnum:]])max\(/\1libsvm_max(/g' libvmaf/src/svm.cpp
 
+    # Windows cross-build: NVCC and bin2c are build-machine tools.
+    # Do not let Meson test NVCC as a Windows-target compiler through Wine.
+    if [[ $TARGET == win* ]]; then
+        sed -i \
+            -e "s/add_languages('cuda', required : true)/add_languages('cuda', required : true, native : true)/" \
+            -e "s/meson.get_compiler('cuda')/meson.get_compiler('cuda', native : true)/" \
+            -e "s/find_program('nvcc')/find_program('nvcc', native : true)/" \
+            -e "s/find_program('bin2c')/find_program('bin2c', native : true)/" \
+            libvmaf/src/meson.build
+    fi
+
     # Enable CUDA for the VMAF build
     local cuda=1
 
@@ -94,16 +105,18 @@ ffbuild_dockerbuild() {
         # Configure Meson to use the intended NVCC executable.
         # Replace an existing CUDA entry as well, so an old
         # CUDA 13.0 path cannot remain in /cross.meson.
-        if grep -q '^cuda[[:space:]]*=' /cross.meson; then
-            sed -i -E \
-                "s|^cuda[[:space:]]*=.*$|cuda = '${CUDA_PATH}/bin/nvcc'|" \
-                /cross.meson
-        else
-            sed -i \
-                "/^\[binaries\]/a cuda = '${CUDA_PATH}/bin/nvcc'" \
-                /cross.meson
+        if [[ $TARGET == linux* ]]; then
+            if grep -q '^cuda[[:space:]]*=' /cross.meson; then
+                sed -i -E \
+                    "s|^cuda[[:space:]]*=.*$|cuda = '${CUDA_PATH}/bin/nvcc'|" \
+                    /cross.meson
+            else
+                sed -i \
+                    "/^\[binaries\]/a cuda = '${CUDA_PATH}/bin/nvcc'" \
+                    /cross.meson
+            fi
         fi
-
+        
         # Diagnostics: fail if the expected compiler is unavailable.
         "${CUDA_PATH}/bin/nvcc" --version || return 1
         command -v bin2c || return 1
