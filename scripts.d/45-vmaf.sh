@@ -15,8 +15,8 @@ SCRIPT_COMMIT_WIN64="3e2985668159549bcf24d26fc2bbce88711c720c"
 SCRIPT_DIR_WIN64="vmaf-win64"
 
 # Change all three together (apt package, install path, version).
-CUDA_VERSION="13.2"
-CUDA_APT_PKG="cuda-toolkit-13-2"
+CUDA_VERSION="13.4"
+CUDA_APT_PKG="cuda-toolkit-13-4"
 CUDA_PATH="/usr/local/cuda-${CUDA_VERSION}"
 
 ffbuild_enabled() {
