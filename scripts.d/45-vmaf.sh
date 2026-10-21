@@ -184,8 +184,20 @@ ffbuild_dockerbuild() {
         rm -f cuda-keyring_1.1-1_all.deb
 
         apt-get update || return 1
-        apt-get install -y --no-install-recommends "$CUDA_APT_PKG" gcc g++ || return 1
+        apt-get install -y --no-install-recommends gcc g++ make || return 1
 
+        # cuda-nvcc depends on build-essential, which isn't installable in some base images (e.g. ubuntu 26.04).
+        # gcc/g++/make are already installed above, so satisfy the dependency with an empty stub if needed.
+        if ! apt-get install -y --no-install-recommends build-essential; then
+            local stub
+            stub="$(mktemp -d)" || return 1
+            mkdir -p "$stub/DEBIAN" || return 1
+            printf 'Package: build-essential\nVersion: 99\nArchitecture: all\nMaintainer: none\nDescription: stub for CUDA nvcc dependency\n' > "$stub/DEBIAN/control" || return 1
+            dpkg-deb --build "$stub" "$stub.deb" || return 1
+            dpkg -i "$stub.deb" || return 1
+        fi
+
+        apt-get install -y --no-install-recommends "$CUDA_APT_PKG" || return 1
         export PATH="${CUDA_PATH}/bin:$PATH"
 
         # NVCC only generates device fatbins; use the build machine's compiler,
