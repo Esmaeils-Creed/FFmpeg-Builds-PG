@@ -166,6 +166,62 @@ ffbuild_dockerbuild() {
     DESTDIR="$FFBUILD_DESTDIR" ninja install || return 1
 
     local pc="$FFBUILD_DESTPREFIX/lib/pkgconfig/libvmaf.pc"
+
+    if [[ ! -f $pc ]]; then
+        echo "ERROR: libvmaf.pc not found: $pc"
+        return 1
+    fi
+
+    # Remove flags previously injected by this script.
+    sed -i \
+        -e '/^Libs:/ s/ -lstdc++//g' \
+        -e '/^Libs:/ s/ -ldl//g' \
+        -e '/^Libs\.private:/ s/ -lstdc++//g' \
+        -e '/^Libs\.private:/ s/ -ldl//g' \
+        "$pc" || return 1
+
+    if (( cuda )); then
+        local extra_libs="-lstdc++"
+
+        # libdl is a Linux library; do not pass -ldl to MinGW.
+        if [[ $TARGET == linux* ]]; then
+            extra_libs+=" -ldl"
+        fi
+
+        if grep -q '^Libs.private:' "$pc"; then
+            sed -i \
+                "/^Libs\.private:/ s/$/ $extra_libs/" \
+                "$pc" || return 1
+        else
+            printf '\nLibs.private: %s\n' "$extra_libs" \
+                >> "$pc" || return 1
+        fi
+
+        if ! grep -q '^Libs:' "$pc"; then
+            echo "ERROR: No Libs: entry found in $pc"
+            return 1
+        fi
+
+        # AOM's CMake configuration consumes the public Libs: entry.
+        sed -i "/^Libs:/ s/$/ $extra_libs/" "$pc" || return 1
+    else
+        if grep -q '^Libs.private:' "$pc"; then
+            sed -i '/^Libs\.private:/ s/$/ -lstdc++/' "$pc" || return 1
+        else
+            printf '\nLibs.private: -lstdc++\n' \
+                >> "$pc" || return 1
+        fi
+    fi
+
+    echo "---- Final libvmaf.pc for TARGET=$TARGET ----"
+    cat "$pc"
+
+    # Catch this particular failure before the build reaches AOM.
+    if [[ $TARGET == win* ]] && grep -n -- '-ldl' "$pc"; then
+        echo "ERROR: Windows libvmaf.pc still contains -ldl"
+        return 1
+    fi
+    
     if [[ ! -f $pc ]]; then
         echo "ERROR: Expected pkg-config file was not installed: $pc"
         return 1
