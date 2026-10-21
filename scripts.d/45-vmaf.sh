@@ -19,27 +19,47 @@ ffbuild_dockerdl() {
 }
 
 ffbuild_dockerbuild() {
-    # Kill build of unused and broken tools
+    # Kill build of unused and broken tools.
     echo > libvmaf/tools/meson.build
 
-    # Work around symbol collisions with libsvm's global functions
-    sed -i -E 's/([^.>:_[:alnum:]])swap\(/\1libsvm_swap(/g' libvmaf/src/svm.cpp
-    sed -i -E 's/([^.>:_[:alnum:]])min\(/\1libsvm_min(/g' libvmaf/src/svm.cpp
-    sed -i -E 's/([^.>:_[:alnum:]])max\(/\1libsvm_max(/g' libvmaf/src/svm.cpp
+    # Work around symbol collisions with libsvm's global functions.
+    sed -i -E 's/([^.>:_[:alnum:]])swap\(/\1libsvm_swap(/g' libvmaf/src/svm.cpp || return 1
+    sed -i -E 's/([^.>:_[:alnum:]])min\(/\1libsvm_min(/g' libvmaf/src/svm.cpp || return 1
+    sed -i -E 's/([^.>:_[:alnum:]])max\(/\1libsvm_max(/g' libvmaf/src/svm.cpp || return 1
+
+    # Enable CUDA for this build. Set to 0 to build libvmaf without CUDA.
+    local cuda=1
 
     # Windows cross-build: NVCC and bin2c are build-machine tools.
+    # This VMAF revision uses NVCC to emit device fatbins, then bin2c
+    # converts them to C arrays which MinGW compiles for Windows.
     # Do not let Meson test NVCC as a Windows-target compiler through Wine.
-    if [[ $TARGET == win* ]]; then
+    if (( cuda )) && [[ $TARGET == win* ]]; then
         sed -i \
             -e "s/add_languages('cuda', required : true)/add_languages('cuda', required : true, native : true)/" \
             -e "s/meson.get_compiler('cuda')/meson.get_compiler('cuda', native : true)/" \
             -e "s/find_program('nvcc')/find_program('nvcc', native : true)/" \
             -e "s/find_program('bin2c')/find_program('bin2c', native : true)/" \
-            libvmaf/src/meson.build
-    fi
+            libvmaf/src/meson.build || return 1
 
-    # Enable CUDA for the VMAF build
-    local cuda=1
+        # Fail clearly if the pinned source no longer matches the patch.
+        grep -Fq "add_languages('cuda', required : true, native : true)" libvmaf/src/meson.build || {
+            echo "ERROR: Failed to patch VMAF's CUDA language declaration for a Windows cross-build."
+            return 1
+        }
+        grep -Fq "meson.get_compiler('cuda', native : true)" libvmaf/src/meson.build || {
+            echo "ERROR: Failed to patch VMAF's CUDA compiler lookup for a Windows cross-build."
+            return 1
+        }
+        grep -Fq "find_program('nvcc', native : true)" libvmaf/src/meson.build || {
+            echo "ERROR: Failed to patch VMAF's NVCC lookup for a Windows cross-build."
+            return 1
+        }
+        grep -Fq "find_program('bin2c', native : true)" libvmaf/src/meson.build || {
+            echo "ERROR: Failed to patch VMAF's bin2c lookup for a Windows cross-build."
+            return 1
+        }
+    fi
 
     local myconf=(
         --prefix="$FFBUILD_PREFIX"
@@ -64,22 +84,19 @@ ffbuild_dockerbuild() {
     fi
 
     if [[ $TARGET == win* || $TARGET == linux* ]]; then
-        myconf+=(
-            --cross-file=/cross.meson
-        )
+        myconf+=(--cross-file=/cross.meson)
     else
-        echo "Unknown target"
+        echo "Unknown target: $TARGET"
         return 1
     fi
 
     if (( cuda )); then
-        # nv-codec-headers: build-time only.
+        # nv-codec-headers are needed at build time for VMAF's CUDA headers.
         # FFmpeg gets its own headers from 50-ffnvcodec.
         make -C ffnvcodec PREFIX="$FFBUILD_PREFIX" install || return 1
-
         export CPATH="$FFBUILD_PREFIX/include${CPATH:+:$CPATH}"
 
-        # Install the NVIDIA CUDA repository keyring.
+        # Install NVIDIA's CUDA repository keyring.
         curl -fsSLO \
             https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
             || return 1
@@ -88,9 +105,8 @@ ffbuild_dockerbuild() {
         rm -f cuda-keyring_1.1-1_all.deb
 
         apt-get update || return 1
-
-        # CUDA 13.2 fixes the rsqrt/rsqrtf declaration conflict
-        # encountered with CUDA 13.0 and newer glibc headers.
+        # CUDA 13.2 avoids the rsqrt/rsqrtf declaration conflict seen with
+        # CUDA 13.0 and newer glibc headers.
         apt-get install -y --no-install-recommends \
             cuda-toolkit-13-2 \
             gcc \
@@ -99,25 +115,25 @@ ffbuild_dockerbuild() {
 
         export PATH="${CUDA_PATH}/bin:$PATH"
 
-        # Use the system C++ compiler as NVCC's host compiler.
+        # NVCC is only generating device fatbins here; use the system compiler.
         export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++"
 
-        # Configure Meson to use the intended NVCC executable.
-        # Replace an existing CUDA entry as well, so an old
-        # CUDA 13.0 path cannot remain in /cross.meson.
+        # For Linux targets, make Meson use this precise NVCC path from its
+        # cross file. Do not add a Linux path as the Windows target compiler:
+        # Windows' CUDA compile steps are explicitly native above.
         if [[ $TARGET == linux* ]]; then
             if grep -q '^cuda[[:space:]]*=' /cross.meson; then
                 sed -i -E \
                     "s|^cuda[[:space:]]*=.*$|cuda = '${CUDA_PATH}/bin/nvcc'|" \
-                    /cross.meson
+                    /cross.meson || return 1
             else
                 sed -i \
                     "/^\[binaries\]/a cuda = '${CUDA_PATH}/bin/nvcc'" \
-                    /cross.meson
+                    /cross.meson || return 1
             fi
         fi
-        
-        # Diagnostics: fail if the expected compiler is unavailable.
+
+        # Diagnostics: fail if the expected compiler/tools are unavailable.
         "${CUDA_PATH}/bin/nvcc" --version || return 1
         command -v bin2c || return 1
 
@@ -127,29 +143,18 @@ ffbuild_dockerbuild() {
         )
     fi
 
-    # The build directory must live inside libvmaf/.
-    # meson.build uses relative ../src include paths for CUDA.
+    # The build directory must live inside libvmaf/: meson.build uses
+    # relative ../src include paths for the generated CUDA kernel commands.
     cd libvmaf || return 1
-
     mkdir build || return 1
     cd build || return 1
 
-    # IMPORTANT:
-    # LDFLAGS is applied to all languages by Meson, including CUDA.
-    # The BtbN linker flags include GCC/linker-driver options such
-    # as -static-libgcc and -Wl,..., which NVCC rejects when passed
-    # directly.
-    #
-    # Temporarily remove inherited LDFLAGS for Meson's configuration
-    # and build. This avoids passing those flags to NVCC, but also
-    # means Meson will not inherit them for C/C++ linking.
-    #
-    # VMAF is built as a static library with tests and tools disabled.
-    # FFmpeg's final link is configured in its own build stage.
-    #
-    # If the offending flags are explicitly configured in
-    # /cross.meson rather than inherited from LDFLAGS, that file
-    # will need a separate correction.
+    # BtbN's LDFLAGS include GCC/linker-driver options such as -static-libgcc
+    # and -Wl,...; NVCC rejects these when passed directly. Meson records the
+    # environment's linker flags during setup, so unset LDFLAGS for setup.
+    # This builds a static libvmaf; FFmpeg's final link is configured later.
+    # If those flags are explicitly embedded in /cross.meson, that file must
+    # be corrected separately because unsetting the environment won't remove them.
     if ! env -u LDFLAGS meson "${myconf[@]}" ..; then
         echo "ERROR: Meson configuration failed."
         echo "---- Meson log ----"
@@ -157,26 +162,49 @@ ffbuild_dockerbuild() {
         return 1
     fi
 
-    # Do not run Ninja if Meson configuration failed.
     ninja -j"$(nproc)" || return 1
-
     DESTDIR="$FFBUILD_DESTDIR" ninja install || return 1
 
     local pc="$FFBUILD_DESTPREFIX/lib/pkgconfig/libvmaf.pc"
+    if [[ ! -f $pc ]]; then
+        echo "ERROR: Expected pkg-config file was not installed: $pc"
+        return 1
+    fi
+
+    # Avoid duplicate/stale flags if this .pc file is reused by a cached stage.
+    # -ldl is Linux-specific; it does not exist in the MinGW Windows toolchain.
+    sed -i \
+        -e '/^Libs:/ s/ -lstdc++//g' \
+        -e '/^Libs:/ s/ -ldl//g' \
+        -e '/^Libs\.private:/ s/ -lstdc++//g' \
+        -e '/^Libs\.private:/ s/ -ldl//g' \
+        "$pc" || return 1
 
     if (( cuda )); then
-        # Ensure static consumers receive the required C++ runtime
-        # and dynamic-loader libraries.
-        sed -i \
-            's/Libs.private:/Libs.private: -lstdc++ -ldl/; t; $ a Libs.private: -lstdc++ -ldl' \
-            "$pc"
+        local extra_libs="-lstdc++"
+        if [[ $TARGET == linux* ]]; then
+            extra_libs+=" -ldl"
+        fi
 
-        # AOM's CMake configuration reads Libs:, not Libs.private.
-        sed -i '/^Libs:/ s/$/ -lstdc++ -ldl/' "$pc"
+        # Static VMAF's consumers need the C++ runtime. AOM's CMake build
+        # reads Libs: rather than Libs.private:, so add these there too.
+        if grep -q '^Libs.private:' "$pc"; then
+            sed -i "/^Libs\.private:/ s/$/ $extra_libs/" "$pc" || return 1
+        else
+            printf '\nLibs.private: %s\n' "$extra_libs" >> "$pc" || return 1
+        fi
+
+        grep -q '^Libs:' "$pc" || {
+            echo "ERROR: No Libs: entry found in $pc"
+            return 1
+        }
+        sed -i "/^Libs:/ s/$/ $extra_libs/" "$pc" || return 1
     else
-        sed -i \
-            's/Libs.private:/Libs.private: -lstdc++/; t; $ a Libs.private: -lstdc++' \
-            "$pc"
+        if grep -q '^Libs.private:' "$pc"; then
+            sed -i '/^Libs\.private:/ s/$/ -lstdc++/' "$pc" || return 1
+        else
+            printf '\nLibs.private: -lstdc++\n' >> "$pc" || return 1
+        fi
     fi
 }
 
