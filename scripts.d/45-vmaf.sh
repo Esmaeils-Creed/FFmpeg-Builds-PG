@@ -14,10 +14,11 @@ SCRIPT_REPO_WIN64="https://github.com/birkdev/vmaf.git"
 SCRIPT_COMMIT_WIN64="3e2985668159549bcf24d26fc2bbce88711c720c"
 SCRIPT_DIR_WIN64="vmaf-win64"
 
-# Change all three together (apt package, install path, version).
 CUDA_VERSION="13.4"
 CUDA_APT_PKGS=(cuda-nvcc-13-4 cuda-cudart-dev-13-4)
 CUDA_PATH="/usr/local/cuda-${CUDA_VERSION}"
+CUDA_KEYRING_SHA256_X86_64="f7f474b5f6a4adf987aa587920df00e713285958ef6a913dda1945a544a3099e"
+CUDA_KEYRING_SHA256_SBSA="bf74da243be6737d338a8e6f03469eb983825bba7b6dbd0b6d6a6f60229cbb6e"
 
 ffbuild_enabled() {
     return 0
@@ -31,41 +32,32 @@ ffbuild_dockerdl() {
     echo "git-mini-clone \"$SCRIPT_REPO_WIN64\" \"$SCRIPT_COMMIT_WIN64\" $SCRIPT_DIR_WIN64"
 }
 
+# Multi-line sed substitution that fails unless the pattern matches exactly once.
+vmaf_patch() {
+    local file="$1" pattern="$2" repl="$3" n
+    n="$(grep -Ezo "$pattern" "$file" | tr -cd '\0' | wc -c)"
+    [[ $n -eq 1 ]] || { echo "ERROR: expected 1 match in $file, found $n: $pattern"; return 1; }
+    sed -z -i -E "s/${pattern}/${repl}/" "$file"
+}
+
 # win64 (Linux -> Windows cross): patch PR #1472's libvmaf/src/meson.build.
 #  1. Skip the PowerShell/MSVC discovery unless the BUILD machine is Windows
 #     (Meson's host_machine is the TARGET, so it fires on Linux->Windows).
 #  2. nvcc and bin2c are build-machine tools: find_program(..., native : true).
 vmaf_patch_win64_meson() {
-    python3 - <<'PY' || return 1
-import re, sys
-from pathlib import Path
+    local f=libvmaf/src/meson.build
 
-path = Path("libvmaf/src/meson.build")
-src = path.read_text()
+    vmaf_patch "$f" \
+        "(if host_machine\.system\(\) == 'windows')([[:space:]]*cl_find_result[[:space:]]*=[[:space:]]*run_command\([[:space:]]*'powershell')" \
+        "\1 and build_machine.system() == 'windows'\2" || return 1
 
-def sub_once(pattern, repl, text, label):
-    new, n = re.subn(pattern, repl, text, count=0)
-    if n != 1:
-        sys.exit(f"ERROR: expected exactly 1 match for {label}, found {n}")
-    return new
+    vmaf_patch "$f" \
+        "(nvcc_exe[[:space:]]*=[[:space:]]*find_program\([[:space:]]*'nvcc')[[:space:]]*\)" \
+        "\1, native : true)" || return 1
 
-if "build_machine.system() == 'windows'" not in src:
-    src = sub_once(
-        r"if host_machine\.system\(\) == 'windows'(\s*\n\s*cl_find_result\s*=\s*run_command\(\s*'powershell')",
-        r"if host_machine.system() == 'windows' and build_machine.system() == 'windows'\1",
-        src, "powershell guard")
-
-if not re.search(r"find_program\(\s*'nvcc'\s*,\s*native\s*:\s*true", src):
-    src = sub_once(r"(nvcc_exe\s*=\s*find_program\(\s*'nvcc')\s*\)",
-                   r"\1, native : true)", src, "nvcc find_program")
-
-if not re.search(r"find_program\(\s*'bin2c'\s*,\s*native\s*:\s*true", src):
-    src = sub_once(r"(bin2c_exe\s*=\s*find_program\(\s*'bin2c')\s*\)",
-                   r"\1, native : true)", src, "bin2c find_program")
-
-path.write_text(src)
-PY
-    grep -Fq "build_machine.system() == 'windows'" libvmaf/src/meson.build || return 1
+    vmaf_patch "$f" \
+        "(bin2c_exe[[:space:]]*=[[:space:]]*find_program\([[:space:]]*'bin2c')[[:space:]]*\)" \
+        "\1, native : true)" || return 1
 }
 
 # winarm64 keeps the previous (working) mainline patches.
@@ -170,35 +162,34 @@ ffbuild_dockerbuild() {
 
     if (( cuda )); then
         # nv-codec-headers: needed at build time for VMAF's CUDA headers.
-        # The ffnvcodec dir sits in the default checkout, one level above
-        # the vmaf-win64 tree.
         local ffnv="ffnvcodec"
         (( win64 )) && ffnv="../ffnvcodec"
         make -C "$ffnv" PREFIX="$FFBUILD_PREFIX" install || return 1
         export CPATH="$FFBUILD_PREFIX/include${CPATH:+:$CPATH}"
 
-        # Pick NVIDIA's repo from the build container itself (Ubuntu release and
-        # architecture), not from hardcoded values. Native arm64 containers use
-        # the sbsa repo; "arm64" is the Jetson/Tegra repo and "cross-linux-*"
-        # are x86 host -> aarch64 cross-compile packages, neither applies here.
-        local cuda_distro cuda_arch
+        # Pick NVIDIA's repo from the build container itself
+        local cuda_distro cuda_arch keyring_sha256
         cuda_distro="$(. /etc/os-release && [[ $ID == ubuntu ]] && echo "ubuntu${VERSION_ID//./}")"
         [[ -n $cuda_distro ]] || { echo "ERROR: build container is not Ubuntu"; return 1; }
 
         case "$(dpkg --print-architecture)" in
-            amd64) cuda_arch="x86_64" ;;
-            arm64) cuda_arch="sbsa" ;;
+            amd64) cuda_arch="x86_64"; keyring_sha256="$CUDA_KEYRING_SHA256_X86_64" ;;
+            arm64) cuda_arch="sbsa";   keyring_sha256="$CUDA_KEYRING_SHA256_SBSA" ;;
             *) echo "ERROR: no CUDA repo for $(dpkg --print-architecture)"; return 1 ;;
         esac
 
         local cuda_repo="https://developer.download.nvidia.com/compute/cuda/repos/${cuda_distro}/${cuda_arch}"
         echo "Using CUDA repo: $cuda_repo"
-        curl -fsSLO "${cuda_repo}/cuda-keyring_1.1-1_all.deb" || {
-            echo "ERROR: no CUDA repo/keyring at ${cuda_repo}"
+
+        # Verify the keyring against the pinned hash before dpkg touches it.
+        curl -fsSL -o cuda-keyring.deb "${cuda_repo}/cuda-keyring_1.1-1_all.deb" || return 1
+        echo "${keyring_sha256}  cuda-keyring.deb" | sha256sum -c - || {
+            echo "ERROR: CUDA keyring hash mismatch; actual:"
+            sha256sum cuda-keyring.deb
             return 1
         }
-        dpkg -i cuda-keyring_1.1-1_all.deb || return 1
-        rm -f cuda-keyring_1.1-1_all.deb
+        dpkg -i cuda-keyring.deb || return 1
+        rm -f cuda-keyring.deb
 
         apt-get update || return 1
         apt-get install -y --no-install-recommends "${CUDA_APT_PKGS[@]}" gcc g++ || return 1
@@ -250,6 +241,7 @@ ffbuild_dockerbuild() {
     vmaf_fix_pc "$cuda" || return 1
 
     if (( cuda )); then
+        # Keep the SDK out of this stage's cached layer (only DESTPREFIX is used).
         apt-get purge -y --autoremove "${CUDA_APT_PKGS[@]}" || true
         rm -rf /usr/local/cuda* /var/lib/apt/lists/*
         apt-get clean
