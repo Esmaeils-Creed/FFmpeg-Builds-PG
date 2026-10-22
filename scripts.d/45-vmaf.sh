@@ -16,7 +16,7 @@ SCRIPT_DIR_WIN64="vmaf-win64"
 
 # Change all three together (apt package, install path, version).
 CUDA_VERSION="13.4"
-CUDA_APT_PKG="cuda-nvcc-13-4 cuda-cudart-dev-13-4"
+CUDA_APT_PKGS=(cuda-nvcc-13-4 cuda-cudart-dev-13-4)
 CUDA_PATH="/usr/local/cuda-${CUDA_VERSION}"
 
 ffbuild_enabled() {
@@ -201,8 +201,7 @@ ffbuild_dockerbuild() {
         rm -f cuda-keyring_1.1-1_all.deb
 
         apt-get update || return 1
-        apt-get install -y --no-install-recommends "$CUDA_APT_PKG" gcc g++ || return 1
-
+        apt-get install -y --no-install-recommends "${CUDA_APT_PKGS[@]}" gcc g++ || return 1
         export PATH="${CUDA_PATH}/bin:$PATH"
 
         # NVCC only generates device fatbins; use the build machine's compiler,
@@ -251,7 +250,7 @@ ffbuild_dockerbuild() {
     vmaf_fix_pc "$cuda" || return 1
 
     if (( cuda )); then
-        apt-get purge -y --autoremove "$CUDA_APT_PKG" || true
+        apt-get purge -y --autoremove "${CUDA_APT_PKGS[@]}" || true
         rm -rf /usr/local/cuda* /var/lib/apt/lists/*
         apt-get clean
     fi
