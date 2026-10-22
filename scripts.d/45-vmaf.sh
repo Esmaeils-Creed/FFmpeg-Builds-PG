@@ -11,7 +11,7 @@ SCRIPT_COMMIT2="eddcea9e27f6b772057c9b3f87de2cc1737faffc"
 # win64 only: fork carrying PR #1472 (CUDA feature extraction on Windows).
 # Upstream Netflix/vmaf does not build its NVCC path for Windows.
 SCRIPT_REPO_WIN64="https://github.com/birkdev/vmaf.git"
-SCRIPT_COMMIT_WIN64="3e2985668159549bcf24d26fc2bbce88711c720c"
+SCRIPT_COMMIT_WIN64="86da14d0306a138fd3f01319860b905169746516"
 SCRIPT_DIR_WIN64="vmaf-win64"
 
 CUDA_VERSION="13.4"
