@@ -249,6 +249,12 @@ ffbuild_dockerbuild() {
     DESTDIR="$FFBUILD_DESTDIR" ninja install || return 1
 
     vmaf_fix_pc "$cuda" || return 1
+
+    if (( cuda )); then
+        apt-get purge -y --autoremove "$CUDA_APT_PKG" || true
+        rm -rf /usr/local/cuda* /var/lib/apt/lists/*
+        apt-get clean
+    fi
 }
 
 ffbuild_configure() {
