@@ -16,7 +16,7 @@ SCRIPT_DIR_WIN64="vmaf-win64"
 
 # Change all three together (apt package, install path, version).
 CUDA_VERSION="13.4"
-CUDA_APT_PKG="cuda-nvcc-13-4 cuda-cudart-dev-13-4 cuda-crt-13-4 cuda-cccl-13-4"
+CUDA_APT_PKG="cuda-nvcc-13-4 cuda-cudart-dev-13-4"
 CUDA_PATH="/usr/local/cuda-${CUDA_VERSION}"
 
 ffbuild_enabled() {
