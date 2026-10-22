@@ -170,34 +170,39 @@ ffbuild_dockerbuild() {
 
     if (( cuda )); then
         # nv-codec-headers: needed at build time for VMAF's CUDA headers.
-        # (ffnvcodec dir sits in the default checkout, so make -C works from
-        # either source tree via the absolute path below.)
+        # The ffnvcodec dir sits in the default checkout, one level above
+        # the vmaf-win64 tree.
         local ffnv="ffnvcodec"
         (( win64 )) && ffnv="../ffnvcodec"
         make -C "$ffnv" PREFIX="$FFBUILD_PREFIX" install || return 1
         export CPATH="$FFBUILD_PREFIX/include${CPATH:+:$CPATH}"
 
-        curl -fsSLO \
-            https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
-            || return 1
+        # Pick NVIDIA's repo from the build container itself (Ubuntu release and
+        # architecture), not from hardcoded values. Native arm64 containers use
+        # the sbsa repo; "arm64" is the Jetson/Tegra repo and "cross-linux-*"
+        # are x86 host -> aarch64 cross-compile packages, neither applies here.
+        local cuda_distro cuda_arch
+        cuda_distro="$(. /etc/os-release && [[ $ID == ubuntu ]] && echo "ubuntu${VERSION_ID//./}")"
+        [[ -n $cuda_distro ]] || { echo "ERROR: build container is not Ubuntu"; return 1; }
+
+        case "$(dpkg --print-architecture)" in
+            amd64) cuda_arch="x86_64" ;;
+            arm64) cuda_arch="sbsa" ;;
+            *) echo "ERROR: no CUDA repo for $(dpkg --print-architecture)"; return 1 ;;
+        esac
+
+        local cuda_repo="https://developer.download.nvidia.com/compute/cuda/repos/${cuda_distro}/${cuda_arch}"
+        echo "Using CUDA repo: $cuda_repo"
+        curl -fsSLO "${cuda_repo}/cuda-keyring_1.1-1_all.deb" || {
+            echo "ERROR: no CUDA repo/keyring at ${cuda_repo}"
+            return 1
+        }
         dpkg -i cuda-keyring_1.1-1_all.deb || return 1
         rm -f cuda-keyring_1.1-1_all.deb
 
         apt-get update || return 1
-        apt-get install -y --no-install-recommends gcc g++ make || return 1
+        apt-get install -y --no-install-recommends "$CUDA_APT_PKG" gcc g++ || return 1
 
-        # cuda-nvcc depends on build-essential, which isn't installable in some base images (e.g. ubuntu 26.04).
-        # gcc/g++/make are already installed above, so satisfy the dependency with an empty stub if needed.
-        if ! apt-get install -y --no-install-recommends build-essential; then
-            local stub
-            stub="$(mktemp -d)" || return 1
-            mkdir -p "$stub/DEBIAN" || return 1
-            printf 'Package: build-essential\nVersion: 99\nArchitecture: all\nMaintainer: none\nDescription: stub for CUDA nvcc dependency\n' > "$stub/DEBIAN/control" || return 1
-            dpkg-deb --build "$stub" "$stub.deb" || return 1
-            dpkg -i "$stub.deb" || return 1
-        fi
-
-        apt-get install -y --no-install-recommends "$CUDA_APT_PKG" || return 1
         export PATH="${CUDA_PATH}/bin:$PATH"
 
         # NVCC only generates device fatbins; use the build machine's compiler,
