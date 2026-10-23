@@ -124,10 +124,10 @@ ffbuild_dockerbuild() {
 
     # win64 uses the PR #1472 tree; everything else uses mainline.
     local win64=0
-    if [[ $TARGET == win64 ]]; then
-        win64=1
-        cd "$SCRIPT_DIR_WIN64" || return 1
-    fi
+    #if [[ $TARGET == win64 ]]; then
+    #    win64=1
+    #    cd "$SCRIPT_DIR_WIN64" || return 1
+    #fi
 
     # Kill build of unused and broken tools.
     echo > libvmaf/tools/meson.build
