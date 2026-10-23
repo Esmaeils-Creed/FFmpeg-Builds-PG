@@ -51,7 +51,9 @@ vmaf_patch_cuda_native() {
 vmaf_fix_pc() {
     local pc="$FFBUILD_DESTPREFIX/lib/pkgconfig/libvmaf.pc"
     [[ -f $pc ]] || { echo "ERROR: libvmaf.pc not found: $pc"; return 1; }
-
+    #diagnostic
+    cat "$pc"
+    
     sed -i \
         -e '/^Libs:/ s/ -lstdc++//g' -e '/^Libs:/ s/ -ldl//g' \
         -e '/^Libs\.private:/ s/ -lstdc++//g' -e '/^Libs\.private:/ s/ -ldl//g' \
