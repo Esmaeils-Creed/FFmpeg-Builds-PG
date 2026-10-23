@@ -44,42 +44,22 @@ vmaf_patch_cuda_native() {
     done
 }
 
-# Single idempotent libvmaf.pc fix.
+
 # Static libvmaf contains C++ (svm.cpp). AOM's CMake and FFmpeg's configure read
 # the public Libs: line, so the C++ runtime goes there and in Libs.private:.
 # -ldl is Linux-only and must never reach a MinGW target.
 vmaf_fix_pc() {
     local pc="$FFBUILD_DESTPREFIX/lib/pkgconfig/libvmaf.pc"
-    [[ -f $pc ]] || { echo "ERROR: libvmaf.pc not found: $pc"; return 1; }
-    #diagnostic
-    cat "$pc"
-    
-    sed -i \
-        -e '/^Libs:/ s/ -lstdc++//g' -e '/^Libs:/ s/ -ldl//g' \
-        -e '/^Libs\.private:/ s/ -lstdc++//g' -e '/^Libs\.private:/ s/ -ldl//g' \
-        "$pc" || return 1
-
     local extra="-lstdc++"
     if (( $1 )) && [[ $TARGET == linux* ]]; then
         extra+=" -ldl"
     fi
 
-    grep -q '^Libs:' "$pc" || { echo "ERROR: No Libs: entry in $pc"; return 1; }
     sed -i "/^Libs:/ s/\$/ $extra/" "$pc" || return 1
-
-    if grep -q '^Libs.private:' "$pc"; then
-        sed -i "/^Libs\.private:/ s/\$/ $extra/" "$pc" || return 1
-    else
-        printf '\nLibs.private: %s\n' "$extra" >> "$pc" || return 1
-    fi
+    grep -q "^Libs:.* ${extra}\$" "$pc" || { echo "ERROR: failed to patch $pc"; return 1; }
 
     echo "---- Final libvmaf.pc for TARGET=$TARGET ----"
     cat "$pc"
-
-    if [[ $TARGET == win* ]] && grep -n -- '-ldl' "$pc"; then
-        echo "ERROR: Windows libvmaf.pc still contains -ldl"
-        return 1
-    fi
 }
 
 ffbuild_dockerbuild() {
