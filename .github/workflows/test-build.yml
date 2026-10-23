@@ -11,7 +11,7 @@ on:
       target:
         description: 'Target'
         type: string
-        default: 'linux64'
+        default: 'win64'
       variant:
         description: 'Variant, e.g. "gpl 9.0"'
         type: string
