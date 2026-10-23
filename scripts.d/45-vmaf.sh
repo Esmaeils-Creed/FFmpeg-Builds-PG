@@ -1,18 +1,11 @@
 #!/bin/bash
 
-# Mainline libvmaf: used for every target except win64.
 SCRIPT_REPO="https://github.com/Netflix/vmaf.git"
 SCRIPT_COMMIT="86da14d0306a138fd3f01319860b905169746516"
 
 # nv-codec-headers (needed at build time for libvmaf's CUDA headers).
 SCRIPT_REPO2="https://github.com/FFmpeg/nv-codec-headers.git"
 SCRIPT_COMMIT2="eddcea9e27f6b772057c9b3f87de2cc1737faffc"
-
-# win64 only: fork carrying PR #1472 (CUDA feature extraction on Windows).
-# Upstream Netflix/vmaf does not build its NVCC path for Windows.
-SCRIPT_REPO_WIN64="https://github.com/birkdev/vmaf.git"
-SCRIPT_COMMIT_WIN64="86da14d0306a138fd3f01319860b905169746516"
-SCRIPT_DIR_WIN64="vmaf-win64"
 
 CUDA_VERSION="13.4"
 CUDA_APT_PKGS=(cuda-nvcc-13-4 cuda-cudart-dev-13-4)
@@ -27,38 +20,7 @@ ffbuild_enabled() {
 ffbuild_dockerdl() {
     default_dl .
     echo "git-mini-clone \"$SCRIPT_REPO2\" \"$SCRIPT_COMMIT2\" ffnvcodec"
-    # The dl stage runs with TARGET=dl, so the target can't be chosen here.
-    # Fetch the PR #1472 tree too and select it in ffbuild_dockerbuild.
-    echo "git-mini-clone \"$SCRIPT_REPO_WIN64\" \"$SCRIPT_COMMIT_WIN64\" $SCRIPT_DIR_WIN64"
-}
-
-# Multi-line sed substitution that fails unless the pattern matches exactly once.
-vmaf_patch() {
-    local file="$1" pattern="$2" repl="$3" n
-    n="$(grep -Ezo "$pattern" "$file" | tr -cd '\0' | wc -c)"
-    [[ $n -eq 1 ]] || { echo "ERROR: expected 1 match in $file, found $n: $pattern"; return 1; }
-    sed -z -i -E "s/${pattern}/${repl}/" "$file"
-}
-
-# win64 (Linux -> Windows cross): patch PR #1472's libvmaf/src/meson.build.
-#  1. Skip the PowerShell/MSVC discovery unless the BUILD machine is Windows
-#     (Meson's host_machine is the TARGET, so it fires on Linux->Windows).
-#  2. nvcc and bin2c are build-machine tools: find_program(..., native : true).
-vmaf_patch_win64_meson() {
-    local f=libvmaf/src/meson.build
-
-    vmaf_patch "$f" \
-        "(if host_machine\.system\(\) == 'windows')([[:space:]]*cl_find_result[[:space:]]*=[[:space:]]*run_command\([[:space:]]*'powershell')" \
-        "\1 and build_machine.system() == 'windows'\2" || return 1
-
-    vmaf_patch "$f" \
-        "(nvcc_exe[[:space:]]*=[[:space:]]*find_program\([[:space:]]*'nvcc')[[:space:]]*\)" \
-        "\1, native : true)" || return 1
-
-    vmaf_patch "$f" \
-        "(bin2c_exe[[:space:]]*=[[:space:]]*find_program\([[:space:]]*'bin2c')[[:space:]]*\)" \
-        "\1, native : true)" || return 1
-}
+ }
 
 # winarm64 keeps the previous (working) mainline patches.
 vmaf_patch_winother_meson() {
@@ -122,13 +84,6 @@ ffbuild_dockerbuild() {
     # Enable CUDA for this build. Set to 0 to build libvmaf without CUDA.
     local cuda=1
 
-    # win64 uses the PR #1472 tree; everything else uses mainline.
-    local win64=0
-    #if [[ $TARGET == win64 ]]; then
-    #    win64=1
-    #    cd "$SCRIPT_DIR_WIN64" || return 1
-    #fi
-
     # Kill build of unused and broken tools.
     echo > libvmaf/tools/meson.build
 
@@ -163,7 +118,6 @@ ffbuild_dockerbuild() {
     if (( cuda )); then
         # nv-codec-headers: needed at build time for VMAF's CUDA headers.
         local ffnv="ffnvcodec"
-        (( win64 )) && ffnv="../ffnvcodec"
         make -C "$ffnv" PREFIX="$FFBUILD_PREFIX" install || return 1
         export CPATH="$FFBUILD_PREFIX/include${CPATH:+:$CPATH}"
 
@@ -199,11 +153,7 @@ ffbuild_dockerbuild() {
         # never the MinGW cross compiler.
         export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++"
 
-        if (( win64 )); then
-            # Windows x64: nvcc/bin2c are native tools found by find_program,
-            # no cuda entry in the cross file, PowerShell/MSVC probe disabled.
-            vmaf_patch_win64_meson || return 1
-        elif [[ $TARGET == win* ]]; then
+        if [[ $TARGET == win* ]]; then
             vmaf_patch_winother_meson || return 1
         elif [[ $TARGET == linux* ]]; then
             # Pin Meson to this exact NVCC via the cross file.
