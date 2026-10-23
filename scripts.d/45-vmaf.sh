@@ -153,7 +153,7 @@ ffbuild_dockerbuild() {
         # never the MinGW cross compiler.
         export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++"
 
-        #vmaf_patch_cuda_native || return 1
+        vmaf_patch_cuda_native || return 1
 
         "${CUDA_PATH}/bin/nvcc" --version || return 1
         command -v bin2c || return 1
