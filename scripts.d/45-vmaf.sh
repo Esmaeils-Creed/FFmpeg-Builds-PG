@@ -149,14 +149,7 @@ ffbuild_dockerbuild() {
     mkdir build || return 1
     cd build || return 1
 
-    # BtbN's LDFLAGS (-static-libgcc, -Wl,...) are rejected by NVCC; Meson
-    # records env linker flags at setup, so unset them for setup only.
-    if ! env -u LDFLAGS meson setup "${myconf[@]}" . ..; then
-        echo "ERROR: Meson configuration failed."
-        echo "---- Meson log ----"
-        cat meson-logs/meson-log.txt
-        return 1
-    fi
+    meson setup "${myconf[@]}" . .. || { cat meson-logs/meson-log.txt; return 1; }
 
     ninja -j"$(nproc)" || return 1
     DESTDIR="$FFBUILD_DESTDIR" ninja install || return 1
