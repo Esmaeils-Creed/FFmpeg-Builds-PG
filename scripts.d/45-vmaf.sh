@@ -27,8 +27,6 @@ vmaf_patch_cuda_native() {
     sed -i \
         -e "s/add_languages('cuda', required : true)/add_languages('cuda', required : true, native : true)/" \
         -e "s/meson.get_compiler('cuda')/meson.get_compiler('cuda', native : true)/" \
-        -e "s/find_program('nvcc')/find_program('nvcc', native : true)/" \
-        -e "s/find_program('bin2c')/find_program('bin2c', native : true)/" \
         libvmaf/src/meson.build || return 1
 
     local p
