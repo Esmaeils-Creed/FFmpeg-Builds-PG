@@ -32,9 +32,7 @@ vmaf_patch_cuda_native() {
     local p
     for p in \
         "add_languages('cuda', required : true, native : true)" \
-        "meson.get_compiler('cuda', native : true)" \
-        "find_program('nvcc', native : true)" \
-        "find_program('bin2c', native : true)"; do
+        "meson.get_compiler('cuda', native : true)"; do
         grep -Fq "$p" libvmaf/src/meson.build || {
             echo "ERROR: Failed to patch VMAF's meson.build: $p"
             return 1
